@@ -5,9 +5,7 @@ import requests
 from veracode_api_signing.plugin_requests import RequestsAuthPluginVeracodeHMAC
 from veracode_api_signing.credentials import get_credentials
 import argparse
-from datetime import datetime
-from datetime import date
-from dateutil.relativedelta import relativedelta
+import datetime
 
 json_data_template = {
     "scan_type": ["Static Analysis", "Dynamic Analysis", "Manual Analysis", "SCA"],
@@ -16,13 +14,14 @@ json_data_template = {
     "last_updated_start_date": "",
     "last_updated_end_date": ""
 }
-max_poll_attempts=30
-poll_interval_seconds=60
+max_poll_attempts=60
+poll_interval_seconds=5
 headers = {"User-Agent": "Veracode Report Script"}
 api_base = "https://api.veracode.{intance}/appsec/v1"
 auth = RequestsAuthPluginVeracodeHMAC() 
 
 def update_api_base():
+    global api_base
     api_key_id, api_key_secret = get_credentials()
     if api_key_id.startswith("vera01"):
         api_base = api_base.replace("{intance}", "eu", 1)
@@ -72,32 +71,30 @@ def save_report_to_csv(output_file, output_data):
 
 def get_report_results(report_id, current_start_date, end_date, directory):
     for status_attempt in range(1, max_poll_attempts + 1):
-        print(f"Checking Veracode report status. Attempt {status_attempt}/{max_poll_attempts}...")
+        print(f"Checking Veracode report status for date range {current_start_date}-{end_date}. Attempt {status_attempt}/{max_poll_attempts}...")
         report_data = get_report_data(report_id)
 
         if report_data is None:
             print(f"Error generating report for date range {current_start_date}-{end_date}. Skipping it")
             return
         status = report_data['_embedded']['status']
-        if status == "PROCESSING":
-            print("Veracode report completed. Fetching the report...")
-            get_report_endpoint = f"{api_base}/analytics/report/{report_id}"
-            response = requests.get(get_report_endpoint, auth=auth, headers=headers)
-            output_data = response.json()
-            output_file = f'veracode_data_dump-{current_start_date.strftime("%Y-%m-%d")}-{end_date.strftime("%Y-%m-%d")}.csv'
-            save_report_to_csv(os.path.join(directory), output_file, output_data)
+        if status == "COMPLETED":
+            print("Veracode report completed. Saving it to a file...")
+            output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}.csv'
+            save_report_to_csv(os.path.join(directory, output_file), report_data)
             break
         elif status == "PROCESSING":
             time.sleep(poll_interval_seconds)
         else:
             print(f"Unexpected report status: {status} found for date range {current_start_date}-{end_date}. Skipping it")
             return
+    print (f"Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}. Try it later with id: {report_id}")
             
 
 def get_report_for_start_date(current_start_date, current_time, directory):
     global json_data_template    
 
-    end_date = current_start_date + relativedelta(months=6)
+    end_date = current_start_date + datetime.timedelta(days=180)
     if end_date > current_time:
         end_date = current_time
 
@@ -109,10 +106,10 @@ def get_report_for_start_date(current_start_date, current_time, directory):
     return end_date
 
 def get_all_reports(start_date, directory):
-    current_start_date =  datetime.strptime(start_date, "%Y-%m-%d")
-    current_time = date.today()
+    current_start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+    current_time = datetime.date.today()
     if current_start_date >= current_time:
-        current_start_date = current_start_date - relativedelta(day=1)
+        current_start_date = current_start_date - datetime.timedelta(days=4)
 
     while current_start_date < current_time:
         current_start_date = get_report_for_start_date(current_start_date, current_time, directory)
@@ -125,7 +122,7 @@ def parse_arguments():
 
 def main():
     args = parse_arguments()
-    start_date = args.start_date
+    start_date = args.start
     directory = args.directory
     if (not directory):
         directory = '.'    
