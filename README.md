@@ -1,6 +1,6 @@
 # Veracode Bulk Reporting API Import
 
-Retrieves all the data available from the Veracode Reporting API for a specific range
+Retrieves all the data available from the Veracode Reporting API from a specific start date
 
 ## Setup
 

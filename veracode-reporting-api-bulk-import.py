@@ -190,7 +190,7 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
             print("Veracode report completed. Saving it to a file...")
             output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}.csv'
             save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(report_data['_embedded']['findings'], is_application_data))
-            break
+            return
         elif status == "PROCESSING":
             time.sleep(poll_interval_seconds)
         else:
