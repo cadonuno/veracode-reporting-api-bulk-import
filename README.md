@@ -35,4 +35,5 @@ Arguments supported include:
 
 * `--start`, `-s`  Start date for the first report in the format 'YYYY-MM-DD'
 * `--directory`, `-d` (optional): A directory to save the files to (defaults to current directory)
+* `--application_data`, `-a` (optional): Set to true to import additional fields from the Application Profile (defaults to false) * these additional fields are: Policy, Business Unit, Teams (comma-delimited list), and all custom fields (one per column).
 
