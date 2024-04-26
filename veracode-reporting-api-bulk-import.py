@@ -103,10 +103,12 @@ def parse_application(application_json):
     application['Teams'] = parse_teams(profile["teams"])
     application['Business Unit'] = parse_business_unit(profile["business_unit"])
 
-    business_owner = profile["business_owners"]
-    if business_owner:
-        application['Business Owner'] = business_owner[0]["name"]
-        application['Owner email'] = business_owner[0]["email"]
+    business_owners = profile["business_owners"]
+    if business_owners:
+        if business_owners[0]:
+            owner = business_owners[0]
+            application['Business Owner'] = owner["name"] if "name" in owner else ""
+            application['Owner email'] = owner["email"] if "email" in owner else ""
     else:
         application['Business Owner'] = ""
         application['Owner email'] = ""
