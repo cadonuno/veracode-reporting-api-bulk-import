@@ -257,9 +257,10 @@ def get_all_reports(start_date, end_date, directory, is_application_data):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Veracode Bulk Reporting API Import")
     parser.add_argument("-s", "--start", required=True, help="Start date for the first report in the format 'YYYY-MM-DD'")
-    parser.add_argument("-e", "--end", required=True, help="End date for the report range in the format 'YYYY-MM-DD' (defaults to today)")
+    parser.add_argument("-e", "--end", required=False, help="End date for the report range in the format 'YYYY-MM-DD' (defaults to today)")
     parser.add_argument("-d", "--directory", required=False, help="A directory to save the files to (defaults to current directory)")
     parser.add_argument("-a", "--application_data", required=False, help="Set to TRUE to read additional fields from the application profile")
+    parser.add_argument("-f", "--fields", required=false, help="Comma-delimited list of ")
     return parser.parse_args()
 
 def main():
