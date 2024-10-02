@@ -37,4 +37,4 @@ Arguments supported include:
 * `--end`, `-e` (optional): End date for the report range in the format 'YYYY-MM-DD' (defaults to today)
 * `--directory`, `-d` (optional): A directory to save the files to (defaults to current directory)
 * `--application_data`, `-a` (optional): Set to true to import additional fields from the Application Profile (defaults to false) * these additional fields are: Policy, Business Unit, Teams (comma-delimited list), and all custom fields (one per column).
-
+* `--fields`, `-f` (optional): Comma-delimited list of fields to include in the output files (defaults to all fields)

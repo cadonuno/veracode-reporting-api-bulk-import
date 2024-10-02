@@ -60,14 +60,19 @@ def get_report_data(report_id, page):
             return data
     return None
 
-def save_report_to_csv(output_file, flaw_list):
+def save_report_to_csv(output_file, flaw_list, fields_to_include):
     with open(output_file, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
 
         if flaw_list:
-            csv_writer.writerow(flaw_list[0].keys())
-            for entry in flaw_list:
-                csv_writer.writerow(entry.values())
+            if fields_to_include:
+                csv_writer.writerow(fields_to_include)
+                for entry in flaw_list:
+                    csv_writer.writerow(map(lambda field_to_include: entry[field_to_include] if field_to_include in entry else "INVALID FIELD NAME", fields_to_include))
+            else:
+                csv_writer.writerow(flaw_list[0].keys())
+                for entry in flaw_list:
+                    csv_writer.writerow(entry.values())
             print("Veracode report saved to", output_file)
         else:
             print("No flaws found in the Veracode report.")
@@ -201,7 +206,7 @@ def get_findings_for_all_pages(report_id, embedded_node):
     return findings
 
 
-def get_report_results(report_id, current_start_date, end_date, directory, is_application_data):
+def get_report_results(report_id, current_start_date, end_date, directory, is_application_data, fields_to_include):
     for status_attempt in range(1, max_poll_attempts + 1):
         print(f"Checking Veracode report status for date range {current_start_date}-{end_date}. Attempt {status_attempt}/{max_poll_attempts}...")
         report_data = get_report_data(report_id, 0)
@@ -213,7 +218,7 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
         if status == "COMPLETED":
             print("SUCCESS: report fetched successfully. Saving it to a file...")
             output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}.csv'
-            save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded']), is_application_data))
+            save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded']), is_application_data), fields_to_include)
             return
         elif status == "PROCESSING":
             time.sleep(poll_interval_seconds)
@@ -223,7 +228,7 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
     print (f"Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}. Try it later with id: {report_id}")
             
 
-def get_report_for_start_date(current_start_date, end_date, directory, is_application_data):
+def get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include):
     global json_data_template    
 
     end_date_for_period = current_start_date + datetime.timedelta(days=180)
@@ -234,10 +239,10 @@ def get_report_for_start_date(current_start_date, end_date, directory, is_applic
     json_data["last_updated_start_date"] = current_start_date.strftime("%Y-%m-%d")
     json_data["last_updated_end_date"] = end_date_for_period.strftime("%Y-%m-%d")
 
-    get_report_results(request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data)
+    get_report_results(request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data, fields_to_include)
     return end_date_for_period
 
-def get_all_reports(start_date, end_date, directory, is_application_data):
+def get_all_reports(start_date, end_date, directory, is_application_data, fields_to_include):
     current_start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
     if not end_date:
         end_date = datetime.date.today()
@@ -252,7 +257,7 @@ def get_all_reports(start_date, end_date, directory, is_application_data):
     print()
 
     while current_start_date < end_date:
-        current_start_date = get_report_for_start_date(current_start_date, end_date, directory, is_application_data)
+        current_start_date = get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Veracode Bulk Reporting API Import")
@@ -260,7 +265,7 @@ def parse_arguments():
     parser.add_argument("-e", "--end", required=False, help="End date for the report range in the format 'YYYY-MM-DD' (defaults to today)")
     parser.add_argument("-d", "--directory", required=False, help="A directory to save the files to (defaults to current directory)")
     parser.add_argument("-a", "--application_data", required=False, help="Set to TRUE to read additional fields from the application profile")
-    parser.add_argument("-f", "--fields", required=false, help="Comma-delimited list of ")
+    parser.add_argument("-f", "--fields", required=False, help="Comma-delimited list of fields to include in the output files (defaults to all fields)")
     return parser.parse_args()
 
 def main():
@@ -269,11 +274,12 @@ def main():
     directory = args.directory
     is_application_data = args.application_data
     end_date = args.end
+    fields_to_include = args.fields
     if (not directory):
         directory = '.'    
 
     update_api_base()
-    get_all_reports(start_date, end_date, directory, is_application_data)
+    get_all_reports(start_date, end_date, directory, is_application_data, list(map(lambda field: field.strip(), fields_to_include.split(","))) if fields_to_include else None)
 
 if __name__ == "__main__":
     main()
