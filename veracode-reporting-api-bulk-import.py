@@ -45,7 +45,7 @@ def request_report(json_data):
         print("Report initialization successful. Report ID:", data['_embedded']['id'])
         return data['_embedded']['id']
     else:
-        print("ERROR: unable to request")
+        print("ERROR: unable to create report")
         if response.json():
             print(f"-- {response.json()}")
         response.raise_for_status() 
@@ -62,7 +62,7 @@ def get_report_data(report_id, page):
         if data and data['_embedded']:
             return data
     else:
-        print("ERROR: unable to request")
+        print(f"ERROR: unable to fetch report for id {report_id} and page {page}")
         if response.json():
             print(f"-- {response.json()}")
         response.raise_for_status()
@@ -160,7 +160,11 @@ def get_application(app_id):
         application_dict[app_id] = None
         print("Unable to find application for ID:", app_id)
     else:
+        print(f"ERROR: unable to get application information for app {app_id}")
+        if response.json():
+            print(f"-- {response.json()}")
         response.raise_for_status()
+        return
 
 def add_custom_fields(flaw, custom_fields):
     global application_custom_fields
