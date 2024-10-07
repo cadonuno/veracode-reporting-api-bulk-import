@@ -45,7 +45,10 @@ def request_report(json_data):
         print("Report initialization successful. Report ID:", data['_embedded']['id'])
         return data['_embedded']['id']
     else:
-        response.raise_for_status()
+        print("ERROR: unable to request")
+        if response.json():
+            print(f"-- {response.json()}")
+        response.raise_for_status() 
 
 def get_report_data(report_id, page):
     global api_base
@@ -58,7 +61,12 @@ def get_report_data(report_id, page):
         data = response.json()
         if data and data['_embedded']:
             return data
-    return None
+    else:
+        print("ERROR: unable to request")
+        if response.json():
+            print(f"-- {response.json()}")
+        response.raise_for_status()
+        return None
 
 def save_report_to_csv(output_file, flaw_list, fields_to_include):
     with open(output_file, 'w', newline='') as csvfile:
