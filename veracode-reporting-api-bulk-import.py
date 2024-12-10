@@ -69,7 +69,7 @@ def get_report_data(report_id, page):
         return None
 
 def save_report_to_csv(output_file, flaw_list, fields_to_include):
-    with open(output_file, 'w', newline='') as csvfile:
+    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
 
         if flaw_list:
