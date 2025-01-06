@@ -17,6 +17,8 @@ json_data_template = {
 
 max_poll_attempts=100
 poll_interval_seconds=15
+retry_wait_seconds=1
+retry_max_attempts=10
 headers = {"User-Agent": "Veracode Reporting API Bulk Script"}
 api_base = "https://api.veracode.{intance}"
 auth = RequestsAuthPluginVeracodeHMAC()
@@ -48,7 +50,7 @@ def request_report(json_data):
         print("ERROR: unable to create report")
         if response.json():
             print(f"-- {response.json()}")
-        response.raise_for_status() 
+        response.raise_for_status()
 
 def get_report_data(report_id, page):
     global api_base
@@ -135,11 +137,13 @@ def parse_application(application_json):
     application["custom_fields"] =  parse_custom_fields(profile['custom_fields'])
     return application    
 
-def get_application(app_id):
+def get_application(app_id, attempt=0):
     global api_base
     global headers
     global auth
     global application_dict
+    global retry_max_attempts
+    global retry_wait_seconds
 
     if app_id in application_dict:
         return application_dict[app_id]
@@ -163,8 +167,10 @@ def get_application(app_id):
         print(f"ERROR: unable to get application information for app {app_id}")
         if response.json():
             print(f"-- {response.json()}")
+        if attempt < retry_max_attempts:
+            time.sleep(retry_wait_seconds*(attempt+1))
+            return get_application(app_id, attempt+1)
         response.raise_for_status()
-        return
 
 def add_custom_fields(flaw, custom_fields):
     global application_custom_fields
