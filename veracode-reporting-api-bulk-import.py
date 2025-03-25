@@ -246,16 +246,22 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
     print (f"Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}. Try it later with id: {report_id}")
             
 
-def get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include):
+def get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include, is_ending_on_today):
     global json_data_template    
 
     end_date_for_period = current_start_date + datetime.timedelta(days=180)
-    if end_date_for_period > end_date:
-        end_date_for_period = end_date
+    if end_date_for_period >= end_date:
+        if is_ending_on_today:
+            end_date_for_period = None
+        else:
+            end_date_for_period = end_date
 
     json_data = json_data_template.copy()
     json_data["last_updated_start_date"] = current_start_date.strftime("%Y-%m-%d")
-    json_data["last_updated_end_date"] = end_date_for_period.strftime("%Y-%m-%d")
+    if end_date_for_period:
+        json_data["last_updated_end_date"] = end_date_for_period.strftime("%Y-%m-%d")
+    else:
+        json_data.pop("last_updated_end_date")
 
     get_report_results(request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data, fields_to_include)
     return end_date_for_period
@@ -264,8 +270,10 @@ def get_all_reports(start_date, end_date, directory, is_application_data, fields
     current_start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
     if not end_date:
         end_date = datetime.date.today()
+        is_ending_on_today = True
     else:
         end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
+        is_ending_on_today = False
     if current_start_date >= end_date:
         current_start_date = current_start_date - datetime.timedelta(days=4)
 
@@ -274,8 +282,8 @@ def get_all_reports(start_date, end_date, directory, is_application_data, fields
     print(f"    End Date: {end_date}")
     print()
 
-    while current_start_date < end_date:
-        current_start_date = get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include)
+    while current_start_date and current_start_date < end_date:
+        current_start_date = get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include, is_ending_on_today)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Veracode Bulk Reporting API Import")
