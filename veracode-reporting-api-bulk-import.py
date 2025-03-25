@@ -226,7 +226,7 @@ def get_findings_for_all_pages(report_id, embedded_node):
 
 def get_report_results(report_id, current_start_date, end_date, directory, is_application_data, fields_to_include):
     for status_attempt in range(1, max_poll_attempts + 1):
-        print(f"Checking Veracode report status for date range {current_start_date}-{end_date}. Attempt {status_attempt}/{max_poll_attempts}...")
+        print(f"Checking Veracode report status for date range {current_start_date}-{end_date if end_date else "today"}. Attempt {status_attempt}/{max_poll_attempts}...")
         report_data = get_report_data(report_id, 0)
 
         if report_data is None:
@@ -235,10 +235,10 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
         status = report_data['_embedded']['status']
         if status == "COMPLETED":
             print("SUCCESS: report fetched successfully. Saving it to a file...")
-            output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d")}.csv'
+            output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d") if end_date else datetime.date.today().strftime("%Y-%m-%d")}.csv'
             save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded']), is_application_data), fields_to_include)
             return
-        elif status == "PROCESSING":
+        elif status == "PROCESSING" or status == "SUBMITTED":
             time.sleep(poll_interval_seconds)
         else:
             print(f"ERROR: unexpected report status {status} found for date range {current_start_date}-{end_date}. Skipping it")
