@@ -56,3 +56,6 @@ Arguments supported include:
 * `--directory`, `-d` (optional): A directory to save the files to (defaults to current directory)
 * `--application_data`, `-a` (optional): Set to true to import additional fields from the Application Profile (defaults to false) * these additional fields are: Policy, Business Unit, Teams (comma-delimited list), and all custom fields (one per column).
 * `--fields`, `-f` (optional): Comma-delimited list of fields to include in the output files (defaults to all fields)
+* `--report_type`, `-rt` (optional) Report Type to fetch (default: findings)"
+* `--base_name`, `-bn` (optional): Base csv file name (default: veracode_data_dump)
+* `--scan_type`, `-st` Scan types to fetch, takes 0 or more. (if empty, defaults to all scan types available for report type)

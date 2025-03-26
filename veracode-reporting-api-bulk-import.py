@@ -2,18 +2,11 @@ import time
 import csv
 import os
 import requests
+import sys
 from veracode_api_signing.plugin_requests import RequestsAuthPluginVeracodeHMAC
 from veracode_api_signing.credentials import get_credentials
 import argparse
 import datetime
-
-json_data_template = {
-    "scan_type": ["Static Analysis", "Dynamic Analysis", "Manual Analysis", "SCA"],
-    "policy_sandbox": "Policy",
-    "report_type": "findings",
-    "last_updated_start_date": "",
-    "last_updated_end_date": ""
-}
 
 max_poll_attempts=100
 poll_interval_seconds=15
@@ -28,7 +21,7 @@ application_custom_fields = set()
 
 def update_api_base():
     global api_base
-    api_key_id, api_key_secret = get_credentials()
+    api_key_id, _ = get_credentials()
     if api_key_id.startswith("vera01"):
         api_base = api_base.replace("{intance}", "eu", 1)
     else:
@@ -42,21 +35,22 @@ def request_report(json_data):
     report_request_endpoint = f"{api_base}/appsec/v1/analytics/report"
     response = requests.post(report_request_endpoint, auth=auth, headers=headers, json=json_data)
 
-    if response.ok:
+    if response and response.ok:
         data = response.json()
         print("Report initialization successful. Report ID:", data['_embedded']['id'])
         return data['_embedded']['id']
     else:
-        print("ERROR: unable to create report")
-        if response.json():
+        print(f"ERROR: unable to create report {response.status_code}")
+        if response and response.json():
             print(f"-- {response.json()}")
-        response.raise_for_status()
+        print()
+        return None
 
 def get_report_data(report_id, page):
     global api_base
     global headers
     global auth
-    report_status_endpoint = f"{api_base}/appsec/v1/analytics/report/{report_id}?page={page}"
+    report_status_endpoint = f"{api_base}/appsec/v1/analytics/report/{report_id}{f"?page={page}" if page else ""}"
     response = requests.get(report_status_endpoint, auth=auth, headers=headers)
 
     if response.ok:
@@ -201,8 +195,8 @@ def parse_flaw_list(flaw_list, is_application_data):
 
     return flaw_list
 
-def get_findings_for_all_pages(report_id, embedded_node):
-    findings = embedded_node["findings"]
+def get_findings_for_all_pages(report_id, embedded_node, list_node_name):
+    findings = embedded_node[list_node_name]
     if not "page_metadata" in embedded_node:
         return findings
     page_metadata = embedded_node["page_metadata"]
@@ -217,14 +211,17 @@ def get_findings_for_all_pages(report_id, embedded_node):
     while current_page < max_page:
         print(f"Parsing page {current_page}/{max_page}")
         next_page = get_report_data(report_id, current_page)
-        if next_page and "_embedded" in next_page and "findings" in next_page["_embedded"]:
-            findings = findings + next_page["_embedded"]["findings"]
+        if next_page and "_embedded" in next_page and list_node_name in next_page["_embedded"]:
+            findings = findings + next_page["_embedded"][list_node_name]
         current_page = current_page + 1
 
     return findings
 
 
-def get_report_results(report_id, current_start_date, end_date, directory, is_application_data, fields_to_include):
+def get_report_results(base_name, report_id, current_start_date, end_date, directory, is_application_data, fields_to_include, list_node_name):
+    if not report_id:
+        return
+    
     for status_attempt in range(1, max_poll_attempts + 1):
         print(f"Checking Veracode report status for date range {current_start_date}-{end_date if end_date else "today"}. Attempt {status_attempt}/{max_poll_attempts}...")
         report_data = get_report_data(report_id, 0)
@@ -234,9 +231,12 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
             return
         status = report_data['_embedded']['status']
         if status == "COMPLETED":
-            print("SUCCESS: report fetched successfully. Saving it to a file...")
-            output_file = f'veracode_data_dump {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d") if end_date else datetime.date.today().strftime("%Y-%m-%d")}.csv'
-            save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded']), is_application_data), fields_to_include)
+            print("SUCCESS: report fetched successfully.")
+            if report_data['_embedded']['page_metadata']['total_elements'] == 0:
+                print(f" - No data found for range {current_start_date}-{end_date if end_date else "today"} - Skipping")
+                return
+            output_file = f'{base_name} {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d") if end_date else datetime.date.today().strftime("%Y-%m-%d")}.csv'
+            save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded'], list_node_name), is_application_data), fields_to_include)
             return
         elif status == "PROCESSING" or status == "SUBMITTED":
             time.sleep(poll_interval_seconds)
@@ -244,11 +244,8 @@ def get_report_results(report_id, current_start_date, end_date, directory, is_ap
             print(f"ERROR: unexpected report status {status} found for date range {current_start_date}-{end_date}. Skipping it")
             return
     print (f"Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}. Try it later with id: {report_id}")
-            
 
-def get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include, is_ending_on_today):
-    global json_data_template    
-
+def get_report_for_start_date(base_name, current_start_date, end_date, directory, is_application_data, report_type, scan_types, fields_to_include, is_ending_on_today):
     end_date_for_period = current_start_date + datetime.timedelta(days=180)
     if end_date_for_period >= end_date:
         if is_ending_on_today:
@@ -256,17 +253,34 @@ def get_report_for_start_date(current_start_date, end_date, directory, is_applic
         else:
             end_date_for_period = end_date
 
-    json_data = json_data_template.copy()
-    json_data["last_updated_start_date"] = current_start_date.strftime("%Y-%m-%d")
-    if end_date_for_period:
-        json_data["last_updated_end_date"] = end_date_for_period.strftime("%Y-%m-%d")
-    else:
-        json_data.pop("last_updated_end_date")
+    is_findings_report = not report_type or report_type.strip().lower() == "findings"
 
-    get_report_results(request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data, fields_to_include)
+    json_data = {"policy_sandbox": "Policy"}
+    report_start_date = current_start_date.strftime("%Y-%m-%d")
+    report_end_date = end_date_for_period.strftime("%Y-%m-%d") if end_date_for_period else None
+    if report_type and report_type.strip().lower() == "deletedscans":
+        json_data["deletion_start_date"] = report_start_date
+        if report_end_date:
+            json_data["deletion_end_date"] = report_end_date
+    else:
+        json_data["last_updated_start_date"] = report_start_date
+        if report_end_date:
+            json_data["last_updated_end_date"] = report_end_date
+
+    json_data["report_type"] = report_type    
+    if is_findings_report:
+        json_data["scan_type"] = ["Static Analysis", "Dynamic Analysis", "Manual Analysis", "SCA"]
+        list_node_name = "findings"
+    else:
+        json_data["scan_type"] = ["Static Analysis", "Dynamic Analysis"]
+        list_node_name = "scans" if report_type.strip().lower() == "scans" else "deleted_scans"
+    if scan_types:
+        json_data["scan_type"] = scan_types
+
+    get_report_results(base_name, request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data, fields_to_include, list_node_name)
     return end_date_for_period
 
-def get_all_reports(start_date, end_date, directory, is_application_data, fields_to_include):
+def get_all_reports(base_name, start_date, end_date, directory, is_application_data, report_type, scan_types, fields_to_include):
     current_start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
     if not end_date:
         end_date = datetime.date.today()
@@ -279,33 +293,64 @@ def get_all_reports(start_date, end_date, directory, is_application_data, fields
 
     print("Running with parameters:")
     print(f"    Start Date: {current_start_date}")
-    print(f"    End Date: {end_date}")
+    print(f"    End Date: {end_date if end_date else "null"}")
+    print(f"    Report Type: {report_type if report_type else "null"}")
+    print(f"    Scan Types: {str(scan_types) if scan_types else "null"}")
     print()
 
     while current_start_date and current_start_date < end_date:
-        current_start_date = get_report_for_start_date(current_start_date, end_date, directory, is_application_data, fields_to_include, is_ending_on_today)
+        current_start_date = get_report_for_start_date(base_name, current_start_date, end_date, directory, is_application_data, report_type, scan_types, fields_to_include, is_ending_on_today)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Veracode Bulk Reporting API Import")
     parser.add_argument("-s", "--start", required=True, help="Start date for the first report in the format 'YYYY-MM-DD'")
-    parser.add_argument("-e", "--end", required=False, help="End date for the report range in the format 'YYYY-MM-DD' (defaults to today)")
-    parser.add_argument("-d", "--directory", required=False, help="A directory to save the files to (defaults to current directory)")
-    parser.add_argument("-a", "--application_data", required=False, help="Set to TRUE to read additional fields from the application profile")
-    parser.add_argument("-f", "--fields", required=False, help="Comma-delimited list of fields to include in the output files (defaults to all fields)")
+    parser.add_argument("-e", "--end", required=False, help="(optional) End date for the report range in the format 'YYYY-MM-DD' (defaults to today)")
+    parser.add_argument("-d", "--directory", required=False, help="(optional) A directory to save the files to (defaults to current directory)")
+    parser.add_argument("-a", "--application_data", required=False, help="(optional) Set to TRUE to read additional fields from the application profile")
+    parser.add_argument("-f", "--fields", required=False, help="(optional) Comma-delimited list of fields to include in the output files (defaults to all fields)")
+    parser.add_argument("-rt", "--report_type", required=False, help="(optional) Report Type to fetch (default: findings)")
+    parser.add_argument("-bn", "--base_name", required=False, help="(optional) Base csv file name (default: veracode_data_dump)")
+    parser.add_argument("-st", "--scan_type", required=False, action="append", help="(optional) Scan types to fetch, takes 0 or more. (if empty, defaults to all scan types available for report type)")
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
+    base_name = args.base_name
     start_date = args.start
     directory = args.directory
     is_application_data = args.application_data
     end_date = args.end
     fields_to_include = args.fields
-    if (not directory):
-        directory = '.'    
+    report_type = args.report_type
+    scan_types = args.scan_type
+    if not report_type:
+        report_type = "findings"
+    else:
+        report_type = report_type.strip().lower()
+        supported_report_types = ["findings", "scans", "deletedscans"]
+        if not report_type in supported_report_types:
+            print(f"Report Type {report_type} is invalid, supported types are: {str(supported_report_types)}")
+            sys.exit(-1)
+
+    supported_scan_types = ["Static Analysis", "Dynamic Analysis", "Manual Analysis", "SCA"] if report_type == "findings" else ["Static Analysis", "Dynamic Analysis"]
+    if scan_types:        
+        has_error = False
+        for scan_type in scan_types:
+            if not scan_type in supported_scan_types:
+                print(f"Scan Type {scan_type} is invalid. {report_type} reports only support these scan types: {str(supported_scan_types)}")
+                has_error = True
+        if has_error:
+            sys.exit(-1)
+    else:
+        scan_types = supported_scan_types
+    
+    if not directory:
+        directory = '.'
+    if not base_name:
+        base_name = "veracode_data_dump"
 
     update_api_base()
-    get_all_reports(start_date, end_date, directory, is_application_data, list(map(lambda field: field.strip(), fields_to_include.split(","))) if fields_to_include else None)
+    get_all_reports(base_name, start_date, end_date, directory, is_application_data, report_type, scan_types, list(map(lambda field: field.strip(), fields_to_include.split(","))) if fields_to_include else None)
 
 if __name__ == "__main__":
     main()
