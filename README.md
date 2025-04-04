@@ -63,3 +63,4 @@ Arguments supported include:
 * `--report_type`, `-rt` (optional) Report Type to fetch (default: findings)"
 * `--base_name`, `-bn` (optional): Base csv file name (default: veracode_data_dump)
 * `--scan_type`, `-st` Scan types to fetch, takes 0 or more. (if empty, defaults to all scan types available for report type)
+* `--include_tags`, `-it` (optional) Set to TRUE to include Application Profile Tags (requires application_data)
