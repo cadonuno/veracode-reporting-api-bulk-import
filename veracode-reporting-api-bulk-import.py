@@ -261,7 +261,7 @@ def get_report_for_start_date(base_name, current_start_date, end_date, directory
 
     json_data = {"policy_sandbox": "Policy"}
     report_start_date = current_start_date.strftime("%Y-%m-%d")
-    report_end_date = end_date_for_period.strftime("%Y-%m-%d") if end_date_for_period else None
+    report_end_date = (f'{end_date_for_period.strftime("%Y-%m-%d")} 23:59:59') if end_date_for_period else None
     if report_type and report_type.strip().lower() == "deletedscans":
         json_data["deletion_start_date"] = report_start_date
         if report_end_date:
