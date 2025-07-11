@@ -4,6 +4,7 @@ Retrieves all the data available from **findings** in the Veracode Reporting API
 
 ## Requirements
 - Python 3.12
+  
 Either:
 - An API service account with the Reporting API role.
 - A user account with the Executive, Security Lead, or Security Insights role. For Security Insights, the API only returns data related to the teams of which the user is a member.
