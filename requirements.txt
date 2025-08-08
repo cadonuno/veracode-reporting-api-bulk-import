@@ -1,2 +1,3 @@
 requests>=2.21.0
 veracode-api-signing>=19.9.0
+colored>=2.2.4

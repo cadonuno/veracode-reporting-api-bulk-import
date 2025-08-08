@@ -7,6 +7,15 @@ from veracode_api_signing.plugin_requests import RequestsAuthPluginVeracodeHMAC
 from veracode_api_signing.credentials import get_credentials
 import argparse
 import datetime
+from colored import Fore, Style
+
+RESET_STYLE = Style.reset
+WARNING_COLOUR=Fore.rgb(212, 105, 32)
+WARNING_MESSAGE_COLOUR=Fore.rgb(255, 127, 39)
+ERROR_PREFIX_COLOUR = Fore.rgb(136, 0, 21)
+INFO_PREFIX_COLOUR = Fore.rgb(112, 146, 190)
+INFO_SUFFIX_COLOUR = Fore.rgb(153, 217, 234)
+SUCCESS_PREFIX_COLOUR = Fore.rgb(30, 215, 96)
 
 max_poll_attempts=100
 poll_interval_seconds=15
@@ -37,12 +46,12 @@ def request_report(json_data):
 
     if response and response.ok:
         data = response.json()
-        print("Report initialization successful. Report ID:", data['_embedded']['id'])
+        print(f'{INFO_PREFIX_COLOUR}Report initialization successful.{RESET_STYLE} Report ID: {INFO_SUFFIX_COLOUR}{data["_embedded"]["id"]}{RESET_STYLE} ')
         return data['_embedded']['id']
     else:
-        print(f"ERROR: unable to create report {response.status_code}")
+        print(f"{ERROR_PREFIX_COLOUR}ERROR:{RESET_STYLE} unable to create report {response.status_code}")
         if response and response.json():
-            print(f"-- {response.json()}")
+            print(f"{WARNING_COLOUR}-- {response.json()}{RESET_STYLE}")
         print()
         return None
 
@@ -58,9 +67,9 @@ def get_report_data(report_id, page):
         if data and data['_embedded']:
             return data
     else:
-        print(f"ERROR: unable to fetch report for id {report_id} and page {page}")
+        print(f"{ERROR_PREFIX_COLOUR}ERROR:{RESET_STYLE} unable to fetch report for id {report_id} and page {page}")
         if response.json():
-            print(f"-- {response.json()}")
+            print(f"{WARNING_COLOUR}-- {response.json()}{RESET_STYLE}")
         response.raise_for_status()
         return None
 
@@ -77,9 +86,11 @@ def save_report_to_csv(output_file, flaw_list, fields_to_include):
                 csv_writer.writerow(flaw_list[0].keys())
                 for entry in flaw_list:
                     csv_writer.writerow(entry.values())
-            print("Veracode report saved to", output_file)
+            print(f"{INFO_PREFIX_COLOUR}Veracode report saved to: {RESET_STYLE}{INFO_SUFFIX_COLOUR}{output_file}{RESET_STYLE}")
+            print()
         else:
-            print("No flaws found in the Veracode report.")
+            print(f"{WARNING_COLOUR}No flaws found in the Veracode report.{RESET_STYLE}")
+            print()
 
 def parse_custom_fields(custom_fields):
     global application_custom_fields
@@ -158,11 +169,11 @@ def get_application(app_id, attempt=0):
                     application_dict[app_id] = application
                     return application
         application_dict[app_id] = None
-        print("Unable to find application for ID:", app_id)
+        print(f"{WARNING_COLOUR}Unable to find application for ID: {RESET_STYLE}{app_id}")
     else:
-        print(f"ERROR: unable to get application information for app {app_id}")
+        print(f"{ERROR_PREFIX_COLOUR}ERROR:{RESET_STYLE} unable to get application information for app {app_id}")
         if response.json():
-            print(f"-- {response.json()}")
+            print(f"{WARNING_COLOUR}-- {response.json()}{RESET_STYLE}")
         if attempt < retry_max_attempts:
             time.sleep(retry_wait_seconds*(attempt+1))
             return get_application(app_id, attempt+1)
@@ -209,11 +220,11 @@ def get_findings_for_all_pages(report_id, embedded_node, list_node_name):
     if max_page <= 1:
         return findings
     
-    print(f"Parsing additional pages for report {report_id}")
+    print(f"{INFO_PREFIX_COLOUR}Parsing additional pages for report:{RESET_STYLE} {report_id}")
     current_page = current_page + 1
 
     while current_page < max_page:
-        print(f"Parsing page {current_page}/{max_page}")
+        print(f"{INFO_PREFIX_COLOUR}Parsing page:{RESET_STYLE} {current_page}/{max_page}")
         next_page = get_report_data(report_id, current_page)
         if next_page and "_embedded" in next_page and list_node_name in next_page["_embedded"]:
             findings = findings + next_page["_embedded"][list_node_name]
@@ -221,23 +232,22 @@ def get_findings_for_all_pages(report_id, embedded_node, list_node_name):
 
     return findings
 
-
 def get_report_results(base_name, report_id, current_start_date, end_date, directory, is_application_data, fields_to_include, list_node_name, include_tags):
     if not report_id:
         return
     
     for status_attempt in range(1, max_poll_attempts + 1):
-        print(f"Checking Veracode report status for date range {current_start_date}-{end_date if end_date else "today"}. Attempt {status_attempt}/{max_poll_attempts}...")
+        print(f"{INFO_PREFIX_COLOUR}Checking Veracode report status for date range{RESET_STYLE}: {current_start_date}-{end_date if end_date else "today"}. {WARNING_COLOUR}Attempt {status_attempt}/{max_poll_attempts}...{RESET_STYLE}")
         report_data = get_report_data(report_id, 0)
 
         if report_data is None:
-            print(f"ERROR: empty report for date range {current_start_date}-{end_date}. Skipping it")
+            print(f"{ERROR_PREFIX_COLOUR}ERROR:{RESET_STYLE} empty report for date range {current_start_date}-{end_date}. Skipping it")
             return
         status = report_data['_embedded']['status']
         if status == "COMPLETED":
-            print("SUCCESS: report fetched successfully.")
+            print(f"{SUCCESS_PREFIX_COLOUR}SUCCESS:{RESET_STYLE} report fetched successfully.")
             if report_data['_embedded']['page_metadata']['total_elements'] == 0:
-                print(f" - No data found for range {current_start_date}-{end_date if end_date else "today"} - Skipping")
+                print(f"{INFO_PREFIX_COLOUR} - No data found for range:{RESET_STYLE} {current_start_date}-{end_date if end_date else "today"} - Skipping")
                 return
             output_file = f'{base_name} {current_start_date.strftime("%Y-%m-%d")} to {end_date.strftime("%Y-%m-%d") if end_date else datetime.date.today().strftime("%Y-%m-%d")}.csv'
             save_report_to_csv(os.path.join(directory, output_file), parse_flaw_list(get_findings_for_all_pages(report_id, report_data['_embedded'], list_node_name), is_application_data, include_tags), fields_to_include)
@@ -245,9 +255,9 @@ def get_report_results(base_name, report_id, current_start_date, end_date, direc
         elif status == "PROCESSING" or status == "SUBMITTED":
             time.sleep(poll_interval_seconds)
         else:
-            print(f"ERROR: unexpected report status {status} found for date range {current_start_date}-{end_date}. Skipping it")
+            print(f"{ERROR_PREFIX_COLOUR}ERROR:{RESET_STYLE} unexpected report status {status} found for date range {current_start_date}-{end_date}. Skipping it")
             return
-    print (f"Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}. Try it later with id: {report_id}")
+    print(f"{WARNING_COLOUR}Report timed out after {max_poll_attempts*poll_interval_seconds} seconds for range {current_start_date}-{end_date}.{RESET_STYLE} Try it later with id: {report_id}")
 
 def get_report_for_start_date(base_name, current_start_date, end_date, directory, is_application_data, report_type, scan_types, fields_to_include, is_ending_on_today, include_tags):
     end_date_for_period = current_start_date + datetime.timedelta(days=180)
@@ -262,7 +272,15 @@ def get_report_for_start_date(base_name, current_start_date, end_date, directory
     json_data = {"policy_sandbox": "Policy"}
     report_start_date = current_start_date.strftime("%Y-%m-%d")
     report_end_date = (f'{end_date_for_period.strftime("%Y-%m-%d")} 23:59:59') if end_date_for_period else None
-    if report_type and report_type.strip().lower() == "deletedscans":
+    is_audit_report = False
+    if report_type and report_type.strip().lower() == "audit":
+        json_data = {}
+        is_audit_report = True
+        json_data["start_date"] = report_start_date
+        list_node_name = "audit_logs"
+        if report_end_date:
+            json_data["end_date"] = report_end_date
+    elif report_type and report_type.strip().lower() == "deletedscans":
         json_data["deletion_start_date"] = report_start_date
         if report_end_date:
             json_data["deletion_end_date"] = report_end_date
@@ -275,10 +293,10 @@ def get_report_for_start_date(base_name, current_start_date, end_date, directory
     if is_findings_report:
         json_data["scan_type"] = ["Static Analysis", "Dynamic Analysis", "Manual Analysis", "SCA"]
         list_node_name = "findings"
-    else:
+    elif not is_audit_report:
         json_data["scan_type"] = ["Static Analysis", "Dynamic Analysis"]
         list_node_name = "scans" if report_type.strip().lower() == "scans" else "deleted_scans"
-    if scan_types:
+    if scan_types and not is_audit_report:
         json_data["scan_type"] = scan_types
 
     get_report_results(base_name, request_report(json_data), current_start_date, end_date_for_period, directory, is_application_data, fields_to_include, list_node_name, include_tags)
@@ -292,7 +310,7 @@ def get_all_reports(base_name, start_date, end_date, directory, is_application_d
         has_error = False
         for scan_type in scan_types:
             if not scan_type in supported_scan_types:
-                print(f"Scan Type {scan_type} is invalid. {report_type} reports only support these scan types: {str(supported_scan_types)}")
+                print(f"{ERROR_PREFIX_COLOUR}Scan Type {scan_type} is invalid.{RESET_STYLE} {report_type} reports only support these scan types: {str(supported_scan_types)}")
                 has_error = True
         if has_error:
             sys.exit(-1)
@@ -309,7 +327,7 @@ def get_all_reports(base_name, start_date, end_date, directory, is_application_d
     if current_start_date >= end_date:
         current_start_date = current_start_date - datetime.timedelta(days=4)
 
-    print("Running with parameters:")
+    print(f"{INFO_PREFIX_COLOUR}Running with parameters:{RESET_STYLE}")
     print(f"    Base Name: {base_name if base_name else "veracode_data_dump (default)"}")
     print(f"    Start Date: {current_start_date}")
     print(f"    End Date: {end_date if end_date else "TODAY (default)"}")
@@ -357,9 +375,9 @@ def main():
         report_type = "findings"
     else:
         report_type = report_type.strip().lower()
-        supported_report_types = ["findings", "scans", "deletedscans"]
+        supported_report_types = ["findings", "scans", "deletedscans", "audit"]
         if not report_type in supported_report_types:
-            print(f"Report Type {report_type} is invalid, supported types are: {str(supported_report_types)}")
+            print(f"{ERROR_PREFIX_COLOUR}Report Type {report_type} is invalid, supported types are:{RESET_STYLE} {str(supported_report_types)}")
             sys.exit(-1)
 
     update_api_base()
